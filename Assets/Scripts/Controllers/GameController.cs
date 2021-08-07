@@ -18,17 +18,19 @@ public class GameController : MonoBehaviour
     
     public GameObject selectedIcon;
 
+    //Debug
+    public List<Candy> debugCandys = new List<Candy>();
+
+    public float timeToSwap = 0.4f;
+
     void Start()
     {
        Grid = new Candy[SizeX,SizeY];
         CreateGrid();
     }
 
-    void Update()
-    {
-        if (Input.GetKey(KeyCode.K)){
-            Debug.Log(Grid[0,0]);
-        }
+    void Update(){
+        
     }
 
     void CreateGrid(){
@@ -58,7 +60,7 @@ public class GameController : MonoBehaviour
 
         if(FirstCandy == null){
             FirstCandy = c;
-            selIcon = Instantiate(selectedIcon, new Vector2(c.PosX, c.PosY), Quaternion.identity);
+            selIcon = HighlightCandy(c.PosX, c.PosY);
         }else if(c == FirstCandy){
             FirstCandy = null;
             if(selIcon != null)
@@ -77,6 +79,27 @@ public class GameController : MonoBehaviour
             
             FirstCandy = null;
             SecondCandy = null;
+        }
+    }
+
+    GameObject HighlightCandy(int x, int y){
+       return Instantiate(selectedIcon,new Vector2(x,y) , Quaternion.identity);
+    }
+
+    List<GameObject> HighlightCandys(List<Candy> candys){
+        List<GameObject> highlights = new List<GameObject>();
+        foreach (Candy c in candys)
+        {
+            highlights.Add(HighlightCandy(c.PosX, c.PosY));
+        }
+
+        return highlights;
+    }
+
+    void DestroyHighlight(List<GameObject> h){
+        foreach (GameObject i in h)
+        {
+            Destroy(i);
         }
     }
 
@@ -188,7 +211,7 @@ public class GameController : MonoBehaviour
     public void MoveCandy(Candy c1, Candy c2){
         IsMoving = true;
 
-        StartCoroutine(MoveTo(c1, c2, .5f));
+        StartCoroutine(MoveTo(c1, c2, timeToSwap));
     }
 
     public IEnumerator MoveTo(Candy c1, Candy c2, float t){
@@ -198,24 +221,23 @@ public class GameController : MonoBehaviour
             StartCoroutine(c2.MoveTo(c1, t));
             Grid[c1.PosX, c1.PosY] = c2;
             Grid[c2.PosX, c2.PosY] = c1;
-            yield return new WaitForSeconds(.55f);
+            yield return new WaitForSeconds(t);
 
             List<Candy> candys = new List<Candy>();
 
             candys.AddRange(CheckMatch(c1));
-            yield return new WaitForSeconds(.2f);
+            yield return new WaitForSeconds(.1f);
             candys.AddRange(CheckMatch(c2));
 
             if(candys.Count >= 3){
-                yield return new WaitForSeconds(.5f);
-                //TODO:: ADD IsMoving = false here or in clearAndRefillRoutine
+                yield return new WaitForSeconds(t/2);
                 RefillGrid(candys);
             }else{
                 StartCoroutine(c1.MoveTo(c2, t));
                 StartCoroutine(c2.MoveTo(c1, t));
                 Grid[c1.PosX, c1.PosY] = c2;
                 Grid[c2.PosX, c2.PosY] = c1;
-                yield return new WaitForSeconds(.5f);
+                yield return new WaitForSeconds(t);
                 IsMoving = false;
             }
             yield return null;
@@ -230,7 +252,7 @@ public class GameController : MonoBehaviour
         {
             candysToDown.AddRange(CandyDown(c.PosX));
         }   
-
+        debugCandys = candysToDown;
         return candysToDown;     
     }
 
@@ -257,7 +279,9 @@ public class GameController : MonoBehaviour
     void ClearCandy(List<Candy> c){
         foreach (Candy item in c)
         {
-            ClearCandy(item.PosX, item.PosY);
+            if(item != null){
+                ClearCandy(item.PosX, item.PosY);
+            }
         }
     }
 
@@ -327,10 +351,10 @@ public class GameController : MonoBehaviour
 
                 Candy c = Grid[x,y];
 
-                while (MatchOnFill(c))
+                if(CheckMatch(c).Count >= 3)
                 {
                     ClearCandy(c.PosX, c.PosY);
-                    candy = CreateCandy(x,y);
+                    Grid[x,y] = CreateCandy(x,y);
                 }
             }
         }
@@ -345,10 +369,9 @@ public class GameController : MonoBehaviour
                 for (int j = i+1; j < SizeY; j++)
                 {
                     if(Grid[x,j] != null){
-                        StartCoroutine(Grid[x,j].MoveTo(x,i, .1f));
-                        candys.Add(Grid[x,j]);
+                        StartCoroutine(Grid[x,j].MoveTo(x,i, .1f * (j-i)));
                         Grid[x,i] = Grid[x,j];
-
+                        candys.Add(Grid[x,i]);
                         Grid[x,j] = null;
                         break;
                     }else{
@@ -365,7 +388,7 @@ public class GameController : MonoBehaviour
 
     IEnumerator RefillGridRoutine(List<Candy> candys){
 
-        StartCoroutine(ClearAndRefillRoutine(candys));
+        yield return StartCoroutine(ClearAndRefillRoutine(candys));
         yield return null;
     }
 
@@ -373,6 +396,8 @@ public class GameController : MonoBehaviour
 
         List<Candy> movingCandys = new List<Candy>();
         List<Candy> matches  = new List<Candy>();
+
+        List<GameObject> highlights = HighlightCandys(candys);
 
         float timeToWait = 0.25f;
 
@@ -384,9 +409,14 @@ public class GameController : MonoBehaviour
         {
             ClearCandy(candys);
             
+            DestroyHighlight(highlights);
             yield return new WaitForSeconds(timeToWait);
-            
+
             movingCandys = GetColumn(candys);
+
+            while(!IsCollapsed(movingCandys)){
+                yield return null;
+            }
             
             yield return new WaitForSeconds(timeToWait);
 
@@ -394,6 +424,7 @@ public class GameController : MonoBehaviour
 
             if(matches.Count == 0){
                 isFinished = true;
+                IsMoving = false;
                 break;
             }else{
                 yield return StartCoroutine(ClearAndRefillRoutine(matches));
@@ -401,5 +432,18 @@ public class GameController : MonoBehaviour
         }
         yield return null;
     }
+
+    bool IsCollapsed(List<Candy> candys){
+        foreach (Candy c in candys)
+        {
+            if(c != null){
+                if(c.transform.position.y - (float)c.PosY > 0.001f){
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
 
 }
