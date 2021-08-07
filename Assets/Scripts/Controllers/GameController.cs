@@ -93,7 +93,7 @@ public class GameController : MonoBehaviour
         return false;
     }
 
-    public List<Candy> CheckMatch(Candy c1, Candy c2){
+    public List<Candy> CheckMatch(Candy c1){
         List<Candy> candyListMatch = new List<Candy>();
 
 
@@ -167,87 +167,22 @@ public class GameController : MonoBehaviour
         if(C1Vertical.Count >= 2)
             C1All.AddRange(C1Vertical);
 
-
-       
-        //Verificação candy 2
-        List<Candy> C2All = new List<Candy>();
-        List<Candy> C2Horizontal = new List<Candy>(); 
-        List<Candy> C2Vertical = new List<Candy>(); 
-
-        C2All.Add(c2);
-
-        //Verificação no eixo X para a direita
-        for (int i = c2.PosX + 1; i < SizeX; i++)
-        {
-            Candy c = Grid[i,c2.PosY];
-            if(c == null){
-                break;
-            }else{
-                if(c2.candyType == c.candyType){
-                    C2Horizontal.Add(Grid[i,c2.PosY]);
-                }else{
-                    break;
-                }
-            }
-        }
-        //Verificação no eixo X para a esquerda
-        for (int i = c2.PosX - 1; i >= 0; i--)
-        {
-            Candy c = Grid[i,c2.PosY];
-            if(c == null){
-                break;
-            }else{
-                
-                if(c2.candyType == c.candyType){
-                    C2Horizontal.Add(Grid[i,c2.PosY]);
-                }else{
-                    break;
-                }
-            }
-        }
-        if(C2Horizontal.Count >= 2)
-            C2All.AddRange(C2Horizontal);
-        //Vertical para cima
-        for (int i = c2.PosY+1; i < SizeY; i++)
-        {
-            Candy c = Grid[c2.PosX,i];
-            if(c == null){
-                break;
-            }else{
-                          if(c2.candyType == c.candyType){
-               C2Vertical.Add(Grid[c2.PosX,i]);
-                }else{
-                    break;
-                }
-            }
-        }
-        //Vertical para baixo
-        for (int i = c2.PosY-1; i >= 0; i--)
-        {
-            Candy c =  Grid[c2.PosX,i];
-            if(c == null){
-                break;
-            }else{
-                    
-                if(c2.candyType ==c.candyType){
-                    C2Vertical.Add(Grid[c2.PosX,i]);
-                }else{
-                    break;
-                }
-            }
-        }
-        if(C2Vertical.Count >= 2)
-            C2All.AddRange(C2Vertical);
-
-        if(C2All.Count >= 3){
-            candyListMatch.AddRange(C2All);
-        }
- 
         if(C1All.Count >= 3){
             candyListMatch.AddRange(C1All);
         }
 
         return candyListMatch;
+    }
+
+    public List<Candy> CheckMatch(List<Candy> candys){
+        List<Candy> matches = new List<Candy>();
+
+        foreach (Candy c in candys)
+        {
+            matches.AddRange(CheckMatch(c));
+        }
+
+        return matches;
     }
 
     public void MoveCandy(Candy c1, Candy c2){
@@ -265,34 +200,38 @@ public class GameController : MonoBehaviour
             Grid[c2.PosX, c2.PosY] = c1;
             yield return new WaitForSeconds(.55f);
 
-            List<Candy> candys = CheckMatch(c1,c2);
+            List<Candy> candys = new List<Candy>();
+
+            candys.AddRange(CheckMatch(c1));
+            yield return new WaitForSeconds(.2f);
+            candys.AddRange(CheckMatch(c2));
 
             if(candys.Count >= 3){
-                yield return new WaitForSeconds(.2f);
-
+                yield return new WaitForSeconds(.5f);
+                //TODO:: ADD IsMoving = false here or in clearAndRefillRoutine
                 RefillGrid(candys);
-
             }else{
                 StartCoroutine(c1.MoveTo(c2, t));
                 StartCoroutine(c2.MoveTo(c1, t));
                 Grid[c1.PosX, c1.PosY] = c2;
                 Grid[c2.PosX, c2.PosY] = c1;
+                yield return new WaitForSeconds(.5f);
+                IsMoving = false;
             }
-
-            IsMoving = false;
-
             yield return null;
         }
 
 
     }
     
-    void GetColumn(List<Candy> candys){
-
+    List<Candy> GetColumn(List<Candy> candys){
+        List<Candy> candysToDown = new List<Candy>();
         foreach (Candy c in candys)
         {
-            CandyDown(c.PosX);
-        }        
+            candysToDown.AddRange(CandyDown(c.PosX));
+        }   
+
+        return candysToDown;     
     }
 
     void ClearCandy(int x, int y){
@@ -397,7 +336,9 @@ public class GameController : MonoBehaviour
         }
     }
 
-    void CandyDown(int x){
+    List<Candy> CandyDown(int x){
+        List<Candy> candys = new List<Candy>();
+
         for (int i = 0; i < SizeY - 1; i++)
         {
             if(Grid[x, i] == null){
@@ -405,6 +346,7 @@ public class GameController : MonoBehaviour
                 {
                     if(Grid[x,j] != null){
                         StartCoroutine(Grid[x,j].MoveTo(x,i, .1f));
+                        candys.Add(Grid[x,j]);
                         Grid[x,i] = Grid[x,j];
 
                         Grid[x,j] = null;
@@ -414,6 +356,7 @@ public class GameController : MonoBehaviour
                 }
             }
         }
+        return candys;
     }
 
     void RefillGrid(List<Candy> candys){
@@ -428,32 +371,35 @@ public class GameController : MonoBehaviour
 
     IEnumerator ClearAndRefillRoutine(List<Candy> candys){
 
-        yield return new WaitForSeconds(0.25f);
+        List<Candy> movingCandys = new List<Candy>();
+        List<Candy> matches  = new List<Candy>();
+
+        float timeToWait = 0.25f;
+
+        yield return new WaitForSeconds(timeToWait);
 
         bool isFinished = false;
         
         while (!isFinished)
         {
             ClearCandy(candys);
-        }
+            
+            yield return new WaitForSeconds(timeToWait);
+            
+            movingCandys = GetColumn(candys);
+            
+            yield return new WaitForSeconds(timeToWait);
 
+            matches = CheckMatch(movingCandys);
+
+            if(matches.Count == 0){
+                isFinished = true;
+                break;
+            }else{
+                yield return StartCoroutine(ClearAndRefillRoutine(matches));
+            }
+        }
         yield return null;
     }
-
-
-
-
-    //Refactor
-    List<Candy> FindMatches(int startX, int startY, Vector2 dir, int minLength = 3){
-        List<Candy> matches = new List<Candy>();
-
-        return null;
-    }
-
-
-
-
-
-
 
 }
